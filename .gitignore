@@ -1,0 +1,29 @@
+# Virtual environments
+.venv/
+.venv-1/
+venv/
+env/
+
+# VS Code
+.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local data/model artifacts
+models/
+dataset/
+*.zip
+*.csv
+*.keras
+*.tflite
+*.pkl
+*.task
+
+# Misc
+.DS_Store
+Thumbs.db

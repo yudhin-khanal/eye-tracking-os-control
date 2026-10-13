@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaze Data Collector — Research Edition</title>
+    <meta name="description" content="High-quality gaze data collection dashboard for eye tracking research">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <style>
+        /* ============================================================
+           Design System
+           ============================================================ */
+        :root {
+            --bg:          #09090b;
+            --surface:     #18181b;
+            --card:        #18181b;
+            --card-border: #27272a;
+            --primary:     #3b82f6;
+            --primary-dim: rgba(59,130,246,.15);
+            --secondary:   #60a5fa;
+            --success:     #10b981;
+            --success-dim: rgba(16,185,129,.15);
+            --warning:     #f59e0b;
+            --warning-dim: rgba(245,158,11,.15);
+            --danger:      #ef4444;
+            --danger-dim:  rgba(239,68,68,.15);
+            --text:        #f8fafc;
+            --text-dim:    #a1a1aa;
+            --text-muted:  #71717a;
+            --radius:      16px;
+            --radius-sm:   10px;
+            --shadow:      0 12px 40px -12px rgba(0,0,0,0.8);
+            --glass:       rgba(24,24,27,.8);
+            --glass-border:rgba(255,255,255,.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Removed background blobs for a cleaner look */
+
+        /* ============================================================
+           Shared components
+           ============================================================ */
+        .panel {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10;
+        }
+        .panel.hidden { display: none; }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 3rem;
+            max-width: 640px; width: 92%;
+            box-shadow: var(--shadow);
+            position: relative; z-index: 1;
+        }
+
+        h1 {
+            font-size: 1.8rem; font-weight: 600;
+            color: var(--text);
+            margin-bottom: .3rem;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 2rem; font-weight: 400; }
+
+        label {
+            display: block; font-size: .85rem; font-weight: 500;
+            color: var(--text); margin-bottom: .5rem;
+        }
+
+        input, select {
+            width: 100%; padding: .75rem 1rem;
+            background: var(--bg); color: var(--text);
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+            font-family: inherit; font-size: .95rem;
+            transition: all .2s ease;
+            appearance: none;
+        }
+        input:focus, select:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-dim);
+            background: var(--surface);
+        }
+        select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2371717a'%3E%3Cpath d='M6 9L1 4h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 2.5rem; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .form-group { margin-bottom: 1.5rem; }
+
+        /* Slider */
+        .range-group { margin-bottom: 1.5rem; }
+        .range-group .range-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .6rem; }
+        .range-group .range-value { font-size: .9rem; font-weight: 600; color: var(--text); background: var(--bg); padding: .2rem .6rem; border-radius: 6px; border: 1px solid var(--card-border); }
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 6px;
+            background: var(--bg); border-radius: 3px; border: 1px solid var(--card-border);
+            margin-top: .4rem; padding: 0;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 20px; height: 20px;
+            background: var(--text); border-radius: 50%; cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,.5);
+            border: 2px solid var(--surface);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: .6rem;
+            padding: .85rem 1.5rem; border: none; border-radius: var(--radius-sm);
+            font-family: inherit; font-size: .95rem; font-weight: 500;
+            cursor: pointer; transition: all .2s ease; width: 100%; margin-top: .5rem;
+        }
+        .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.39); }
+        .btn-primary:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.23); }
+        .btn-success { background: var(--success); color: #fff; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger  { background: var(--danger); color: #fff; }
+        .btn-danger:hover  { background: #dc2626; }
+        .btn-ghost   { background: var(--bg); color: var(--text); border: 1px solid var(--card-border); }
+        .btn-ghost:hover   { border-color: var(--text-dim); background: var(--surface); }
+        .btn-sm { padding: .6rem 1.2rem; font-size: .85rem; width: auto; }
+
+        /* Guidelines */
+        .guidelines {
+            background: var(--bg); border: 1px solid var(--card-border);
+            padding: 1rem 1.2rem; border-radius: var(--radius-sm);
+            color: var(--text-dim); font-size: .85rem; line-height: 1.6;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        .guidelines::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+            background: var(--primary); border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+        }
+
+        /* Stats bar */
+        .stats-bar {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-chip {
+            background: var(--bg); border-radius: var(--radius-sm);
+            padding: 1rem; text-align: center;
+            border: 1px solid var(--card-border);
+            transition: border-color .2s;
+        }
+        .stat-chip:hover { border-color: var(--text-muted); }
+        .stat-chip .stat-value { font-size: 1.5rem; font-weight: 600; color: var(--text); }
+        .stat-chip .stat-label { font-size: .75rem; color: var(--text-dim); font-weight: 500; margin-top: .3rem; }
+
+        /* ============================================================
+           Dashboard
+           ============================================================ */
+        #dashboard .card { max-width: 640px; margin: 2rem auto; }
+        #dashboard {
+            overflow-y: auto; padding: 1rem;
+            align-items: flex-start;
+        }
+
+        /* Collection Plan */
+        .plan-section {
+            margin-top: 1.25rem; margin-bottom: 1.25rem;
+        }
+        .plan-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: .75rem;
+        }
+        .plan-header h2 {
+            font-size: .95rem; font-weight: 600; color: var(--text);
+            display: flex; align-items: center; gap: .4rem;
+        }
+        .plan-toggle {
+            background: none; border: 1px solid var(--card-border);
+            color: var(--text-dim); font-family: inherit; font-size: .75rem;
+            padding: .3rem .6rem; border-radius: var(--radius-sm);
+            cursor: pointer; transition: all .2s;
+        }
+        .plan-toggle:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* Overall progress */
+        .overall-progress {
+            background: var(--bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm); padding: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        .overall-progress .op-header {
+            display: flex; justify-content: space-between; align-items: baseline;
+            margin-bottom: .8rem;
+        }
+        .overall-progress .op-title { font-size: .9rem; font-weight: 500; color: var(--text); }
+        .overall-progress .op-numbers { font-size: .9rem; font-weight: 500; color: var(--text-muted); }
+        .progress-bar-track {
+            width: 100%; height: 6px; background: var(--surface);
+            border-radius: 3px; overflow: hidden; border: 1px solid var(--card-border);
+        }
+        .progress-bar-fill {
+            height: 100%; border-radius: 3px;
+            background: var(--primary);
+            transition: width .6s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 0;
+        }
+        .progress-bar-fill.complete {
+            background: var(--success);
+        }
+
+        /* Condition rows */
+        .condition-list { display: flex; flex-direction: column; gap: .75rem; }
+        .condition-row {
+            background: var(--bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm); padding: .8rem 1rem;
+            transition: all .2s;
+        }
+        .condition-row:hover { border-color: var(--text-muted); }
+        .condition-row.recommended {
+            border-color: var(--primary);
+            background: var(--primary-dim);
+        }
+        .cond-top {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: .5rem;
+        }
+        .cond-label {
+            font-size: .85rem; font-weight: 500;
+            display: flex; align-items: center; gap: .5rem;
+        }
+        .cond-badge {
+            font-size: .7rem; padding: .15rem .5rem;
+            border-radius: 6px; font-weight: 600;
+        }
+        .cond-badge.done { background: var(--success-dim); color: var(--success); }
+        .cond-badge.next { background: var(--primary); color: #fff; }
+        .cond-nums {
+            font-size: .8rem; color: var(--text-dim);
+        }
+        .cond-nums strong { color: var(--text); font-weight: 600; }
+        .cond-bar {
+            height: 4px; background: var(--surface);
+            border-radius: 2px; overflow: hidden;
+        }
+        .cond-bar-fill {
+            height: 100%; border-radius: 2px;
+            transition: width .6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Recommendation card */
+        .rec-card {
+            background: var(--bg);
+            border: 1px solid var(--primary);
+            border-radius: var(--radius-sm);
+            padding: 1rem; margin-top: 1rem;
+            font-size: .85rem; color: var(--text); line-height: 1.5;
+            position: relative;
+            overflow: hidden;
+        }
+        .rec-card::before {
+             content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+             background: var(--primary);
+        }
+        .rec-card strong { color: var(--text); font-weight: 600; }
+
+        .plan-collapsed .condition-list,
+        .plan-collapsed .rec-card,
+        .plan-collapsed .overall-progress { display: none; }
+
+        /* ============================================================
+           Tracker UI (fullscreen)
+           ============================================================ */
+        #tracker-ui {
+            position: fixed; inset: 0; background: var(--bg); z-index: 50;
+            overflow: hidden;
+        }
+
+        /* Webcam preview */
+        #webcam {
+            position: fixed; top: 20px; left: 20px;
+            width: 200px; border-radius: var(--radius-sm);
+            border: 2px solid var(--card-border);
+            object-fit: cover; transform: scaleX(-1);
+            opacity: .5; z-index: 60;
+            transition: opacity .2s;
+        }
+        #webcam:hover { opacity: .9; }
+
+        /* Target dot + ring */
+        #target-container {
+            position: fixed;
+            transform: translate(-50%, -50%);
+            z-index: 55; pointer-events: none;
+            transition: left .12s ease-out, top .12s ease-out;
+        }
+
+        #target-dot {
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 20px rgba(239,68,68,.5);
+            position: relative;
+            transition: background .3s, box-shadow .3s;
+        }
+        #target-dot.settling {
+            background: var(--warning);
+            box-shadow: 0 0 24px rgba(245,158,11,.5);
+            animation: pulse-settle .6s ease-in-out infinite;
+        }
+        #target-dot.capturing {
+            background: var(--success);
+            box-shadow: 0 0 24px rgba(16,185,129,.6);
+        }
+        #target-dot::after {
+            content: ''; position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 4px; height: 4px; background: #fff; border-radius: 50%;
+        }
+
+        @keyframes pulse-settle {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        /* SVG progress ring */
+        .progress-ring {
+            position: absolute;
+            top: -11px; left: -11px;
+            width: 46px; height: 46px;
+            transform: rotate(-90deg);
+        }
+        .ring-bg {
+            fill: none; stroke: rgba(255,255,255,.08);
+            stroke-width: 3;
+        }
+        .ring-progress {
+            fill: none; stroke: var(--success);
+            stroke-width: 3; stroke-linecap: round;
+            transition: stroke-dashoffset .15s ease-out;
+        }
+
+        /* Controls overlay */
+        #controls-overlay {
+            position: fixed; top: 20px; right: 20px;
+            display: flex; gap: 8px; z-index: 60;
+        }
+
+        /* Status bar */
+        #status-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(6,6,12,.85);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--card-border);
+            padding: 10px 24px;
+            display: flex; align-items: center; gap: 20px;
+            font-size: .82rem; z-index: 60;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted); flex-shrink: 0;
+            transition: background .2s, box-shadow .2s;
+        }
+        .status-dot.ok   { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-dot.warn { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+        .status-dot.bad  { background: var(--danger);  box-shadow: 0 0 8px var(--danger);  }
+
+        .status-label { color: var(--text-muted); }
+        .status-value { color: var(--text); font-weight: 600; }
+        .status-separator { width: 1px; height: 18px; background: var(--card-border); }
+        .status-group { display: flex; align-items: center; gap: 6px; }
+
+        /* Countdown */
+        #countdown-overlay {
+            position: fixed; inset: 0;
+            background: rgba(6,6,12,.88);
+            display: none; align-items: center; justify-content: center;
+            z-index: 200;
+            font-size: 8rem; font-weight: 800;
+            color: var(--primary);
+            text-shadow: 0 0 40px rgba(99,102,241,.4);
+            animation: countdown-pop .4s ease-out;
+        }
+        @keyframes countdown-pop {
+            from { transform: scale(1.3); opacity: 0; }
+            to   { transform: scale(1);   opacity: 1; }
+        }
+
+        /* Canvas (hidden) */
+        #capture-canvas { display: none; }
+
+        /* ============================================================
+           Summary panel
+           ============================================================ */
+        #summary .card { max-width: 500px; }
+        .summary-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin: 1.5rem 0; }
+        .summary-stat {
+            background: var(--surface); border-radius: var(--radius-sm);
+            padding: 1rem; text-align: center;
+            border: 1px solid var(--card-border);
+        }
+        .summary-stat .val { font-size: 1.5rem; font-weight: 700; }
+        .summary-stat .lbl { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: .2rem; }
+        .summary-stat.good .val { color: var(--success); }
+        .summary-stat.warn .val { color: var(--warning); }
+        .btn-group { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+
+    <!-- ==================== DASHBOARD ==================== -->
+    <div id="dashboard" class="panel">
+        <div class="card">
+            <h1>👁️ Gaze Data Collector</h1>
+            <p class="subtitle">Research-grade data collection for eye tracking</p>
+
+            <!-- Dataset stats -->
+            <div class="stats-bar" id="dataset-stats">
+                <div class="stat-chip">
+                    <div class="stat-value" id="stat-sessions">--</div>
+                    <div class="stat-label">Sessions</div>
+                </div>
+                <div class="stat-chip">
+                    <div class="stat-value" id="stat-frames">--</div>
+                    <div class="stat-label">Total Frames</div>
+                </div>
+                <div class="stat-chip">
+                    <div class="stat-value" id="stat-users">--</div>
+                    <div class="stat-label">Users</div>
+                </div>
+            </div>
+
+            <!-- Collection Plan -->
+            <div class="plan-section plan-collapsed" id="plan-section">
+                <div class="plan-header">
+                    <h2>Collection Plan <span id="plan-summary" style="font-weight:400;font-size:.8rem;color:var(--text-muted)"></span></h2>
+                    <button class="plan-toggle" id="plan-toggle">Expand</button>
+                </div>
+                <div class="overall-progress" id="overall-progress">
+                    <div class="op-header">
+                        <span class="op-title">Overall Progress</span>
+                        <span class="op-numbers" id="op-numbers">-- / --</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="op-bar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="condition-list" id="condition-list">
+                    <!-- Filled by JS -->
+                </div>
+                <div class="rec-card" id="rec-card" style="display:none"></div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="username">Participant Name</label>
+                    <input type="text" id="username" placeholder="e.g., Aadarsh" value="Aadarsh">
+                </div>
+                <div class="form-group">
+                    <label for="session-name">Session Name</label>
+                    <input type="text" id="session-name" placeholder="e.g., session_1" value="session_1">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="session-type">Session Type</label>
+                    <select id="session-type">
+                        <option value="standard">Standard</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="collection-mode">Target Pattern</label>
+                    <select id="collection-mode">
+                        <option value="mixed" selected>Mixed (Grid + Random)</option>
+                        <option value="grid">Grid Only</option>
+                        <option value="random">Random Only</option>
+                        <option value="edges">Edges & Corners</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="range-group">
+                    <div class="range-header">
+                        <label for="target-count">Number of Targets</label>
+                        <span class="range-value" id="target-count-val">80</span>
+                    </div>
+                    <input type="range" id="target-count" min="20" max="200" step="10" value="80">
+                </div>
+                <div class="range-group">
+                    <div class="range-header">
+                        <label for="frames-per-target">Frames per Target</label>
+                        <span class="range-value" id="fpt-val">15</span>
+                    </div>
+                    <input type="range" id="frames-per-target" min="5" max="30" step="1" value="15">
+                </div>
+            </div>
+
+            <div class="guidelines" id="guidelines">
+                Sit up straight with normal room lighting. Keep your head relatively still and follow the red dot <b>only with your eyes</b>. Don't move your head.
+            </div>
+
+            <button class="btn btn-primary" id="btn-start">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Start Session
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== TRACKER UI ==================== -->
+    <div id="tracker-ui" class="panel hidden">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="capture-canvas"></canvas>
+
+        <div id="target-container">
+            <div id="target-dot" class="settling"></div>
+            <svg class="progress-ring" viewBox="0 0 46 46">
+                <circle class="ring-bg" cx="23" cy="23" r="20" />
+                <circle id="ring-progress" class="ring-progress" cx="23" cy="23" r="20"
+                        stroke-dasharray="125.66" stroke-dashoffset="125.66" />
+            </svg>
+        </div>
+
+        <div id="controls-overlay">
+            <button class="btn btn-ghost btn-sm" id="btn-pause">⏸ Pause</button>
+            <button class="btn btn-danger btn-sm" id="btn-finish">⏹ Finish</button>
+        </div>
+
+        <div id="status-bar">
+            <div class="status-group">
+                <div class="status-dot" id="tracking-dot"></div>
+                <span class="status-value" id="status-text">Initialising…</span>
+            </div>
+            <div class="status-separator"></div>
+            <div class="status-group">
+                <span class="status-label">Target</span>
+                <span class="status-value" id="target-counter">0 / 0</span>
+            </div>
+            <div class="status-separator"></div>
+            <div class="status-group">
+                <span class="status-label">Frames</span>
+                <span class="status-value" id="frame-counter">0</span>
+            </div>
+            <div class="status-separator"></div>
+            <div class="status-group">
+                <span class="status-label">Quality</span>
+                <span class="status-value" id="quality-label">—</span>
+            </div>
+        </div>
+
+        <div id="countdown-overlay">3</div>
+    </div>
+
+    <!-- ==================== SUMMARY ==================== -->
+    <div id="summary" class="panel hidden">
+        <div class="card" style="text-align:center;">
+            <h1>Session Complete ✓</h1>
+            <p class="subtitle">Review your collection before saving.</p>
+
+            <div class="summary-stats">
+                <div class="summary-stat good">
+                    <div class="val" id="sum-frames">0</div>
+                    <div class="lbl">Frames</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="val" id="sum-duration">0s</div>
+                    <div class="lbl">Duration</div>
+                </div>
+                <div class="summary-stat" id="sum-quality-chip">
+                    <div class="val" id="sum-quality">0%</div>
+                    <div class="lbl">Quality</div>
+                </div>
+            </div>
+            <p id="sum-detail" style="font-size:.82rem;color:var(--text-muted);margin-bottom:.5rem;"></p>
+
+            <div class="btn-group">
+                <button class="btn btn-success" id="btn-save">💾 Save to CSV</button>
+                <button class="btn btn-danger" id="btn-discard">🗑️ Discard</button>
+                <button class="btn btn-ghost" id="btn-new">↩ New Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== JAVASCRIPT ==================== -->
+    <script>
+    (() => {
+        'use strict';
+
+        // ---- elements ----
+        const $ = id => document.getElementById(id);
+        const dashboard   = $('dashboard');
+        const trackerUI   = $('tracker-ui');
+        const summaryUI   = $('summary');
+        const countdown   = $('countdown-overlay');
+        const video       = $('webcam');
+        const canvas      = $('capture-canvas');
+        const ctx         = canvas.getContext('2d', { willReadFrequently: true });
+        const targetCont  = $('target-container');
+        const targetDot   = $('target-dot');
+        const ringProg    = $('ring-progress');
+        const btnStart    = $('btn-start');
+        const btnPause    = $('btn-pause');
+        const btnFinish   = $('btn-finish');
+        const btnSave     = $('btn-save');
+        const btnDiscard  = $('btn-discard');
+        const btnNew      = $('btn-new');
+        const statusText  = $('status-text');
+        const trackDot    = $('tracking-dot');
+        const targetCounterEl = $('target-counter');
+        const frameCounterEl  = $('frame-counter');
+        const qualityLabel    = $('quality-label');
+        const guidelinesEl    = $('guidelines');
+        const targetCountSlider  = $('target-count');
+        const targetCountVal     = $('target-count-val');
+        const fptSlider          = $('frames-per-target');
+        const fptVal             = $('fpt-val');
+
+        const CIRCUMFERENCE = 2 * Math.PI * 20; // ring r=20
+        const SETTLE_MS = 500; // settle time before recording
+
+        // ---- state ----
+        let socket = null;
+        let videoStream  = null;
+        let isRecording  = false;
+        let isPaused     = false;
+        let targets      = [];
+        let framesPerTarget = 15;
+        let currentTargetIdx = 0;
+        let framesCapturedForTarget = 0;
+        let totalFramesCaptured     = 0;
+        let goodFrames = 0;
+        let poorFrames = 0;
+        let sessionStartTime = 0;
+        let settleTimeout = null;
+        let isSettled = false;
+        let waitingForAck = false;  // flow control
+
+        // ---- audio ----
+        let audioCtx = null;
+        function beep(freq = 600, ms = 80, vol = 0.06) {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.frequency.value = freq; gain.gain.value = vol;
+                osc.start(); osc.stop(audioCtx.currentTime + ms / 1000);
+            } catch (_) { /* audio not available */ }
+        }
+
+        // ---- guidelines text ----
+        const guidelinesMap = {
+            standard:         'Sit up straight with <b>normal room lighting</b>. Keep your head still and follow the dot <b>only with your eyes</b>.',
+            dim_lighting:     'Turn off the main light or close blinds. This tests the camera in <b>low-contrast conditions</b>. Keep your head still.',
+            bright_lighting:  'Sit with a bright light or window <b>behind you</b>. This tests the camera under <b>backlit / overexposed</b> conditions.',
+            slouching:        'Lean forward, backward, or slouch. This teaches the model how to handle <b>different depths and postures</b>.',
+            head_movement:    'While looking at the dot, <b>slightly tilt your head</b> left/right or nod gently. Don\'t keep your neck perfectly stiff.',
+        };
+
+        $('session-type').addEventListener('change', e => {
+            guidelinesEl.innerHTML = guidelinesMap[e.target.value] || '';
+        });
+
+        // ---- sliders ----
+        targetCountSlider.addEventListener('input', () => { targetCountVal.textContent = targetCountSlider.value; });
+        fptSlider.addEventListener('input', () => { fptVal.textContent = fptSlider.value; });
+
+        // ---- connect socket ----
+        socket = io();
+
+        // ---- plan toggle ----
+        $('plan-toggle').addEventListener('click', () => {
+            const sec = $('plan-section');
+            const collapsed = sec.classList.toggle('plan-collapsed');
+            $('plan-toggle').textContent = collapsed ? 'Expand' : 'Collapse';
+        });
+
+        // ---- fetch dataset stats on load ----
+        function fetchStats() {
+            fetch('/api/dataset_stats')
+                .then(r => r.json())
+                .then(renderDashboardStats)
+                .catch(() => {});
+        }
+
+        const COND_ICONS = {
+            standard:       '&#9673;',
+            dim_lighting:   '&#9790;',
+            bright_lighting:'&#9728;',
+            slouching:      '&#8645;',
+            head_movement:  '&#8634;',
+        };
+        const COND_COLORS = {
+            standard:       'var(--primary)',
+            dim_lighting:   '#8b5cf6',
+            bright_lighting:'#f59e0b',
+            slouching:      '#06b6d4',
+            head_movement:  '#ec4899',
+        };
+
+        function renderDashboardStats(s) {
+            $('stat-sessions').textContent = s.total_sessions;
+            $('stat-frames').textContent = s.total_frames.toLocaleString();
+            $('stat-users').textContent = Object.keys(s.users).length;
+
+            if (!s.plan) return;
+            const p = s.plan;
+
+            // Inline summary (visible when collapsed)
+            const done = p.conditions.filter(c => c.done).length;
+            $('plan-summary').textContent = '(' + p.overall_pct + '% complete, ' + done + '/' + p.conditions.length + ' conditions met)';
+
+            // Overall bar
+            $('op-numbers').textContent = p.overall_collected.toLocaleString() + ' / ' + p.overall_target.toLocaleString();
+            const opBar = $('op-bar');
+            opBar.style.width = p.overall_pct + '%';
+            if (p.overall_pct >= 100) opBar.classList.add('complete');
+
+            // Conditions
+            const listEl = $('condition-list');
+            listEl.innerHTML = '';
+
+            // Find which condition needs the most work (lowest pct)
+            let neediest = null;
+            let lowestPct = 101;
+            for (const c of p.conditions) {
+                if (!c.done && c.pct < lowestPct) {
+                    lowestPct = c.pct;
+                    neediest = c.name;
+                }
+            }
+
+            for (const c of p.conditions) {
+                const color = COND_COLORS[c.name] || 'var(--primary)';
+                const icon  = COND_ICONS[c.name] || '';
+                const isRec = c.name === neediest;
+
+                const row = document.createElement('div');
+                row.className = 'condition-row' + (isRec ? ' recommended' : '');
+                row.innerHTML = `
+                    <div class="cond-top">
+                        <span class="cond-label">
+                            <span>${icon}</span> ${c.label}
+                            ${c.done ? '<span class="cond-badge done">DONE</span>' : ''}
+                            ${isRec ? '<span class="cond-badge next">DO NEXT</span>' : ''}
+                        </span>
+                        <span class="cond-nums">
+                            <strong>${c.collected.toLocaleString()}</strong> / ${c.target.toLocaleString()}
+                            ${!c.done ? ' &middot; <em>' + c.remaining.toLocaleString() + ' needed</em>' : ''}
+                        </span>
+                    </div>
+                    <div class="cond-bar">
+                        <div class="cond-bar-fill" style="width:${c.pct}%;background:${c.done ? 'var(--success)' : color}"></div>
+                    </div>
+                `;
+                listEl.appendChild(row);
+            }
+
+            // Recommendation card
+            const recEl = $('rec-card');
+            if (neediest) {
+                const nc = p.conditions.find(c => c.name === neediest);
+                recEl.style.display = 'block';
+                recEl.innerHTML = `<strong>Next up:</strong> Collect <strong>${nc.remaining.toLocaleString()}</strong> more frames in <strong>${nc.label}</strong> mode. `
+                    + (p.current_users < p.min_users
+                        ? `Also need <strong>${p.min_users - p.current_users}</strong> more participant(s) for diversity.`
+                        : 'User diversity looks good!');
+            } else {
+                recEl.style.display = 'block';
+                recEl.innerHTML = '<strong>All conditions met!</strong> You have enough data to begin training.';
+            }
+        }
+
+        fetchStats();
+
+        // ---- camera ----
+        async function startCamera() {
+            if (videoStream) return;
+            if (!window.isSecureContext) {
+                statusText.textContent = '⚠ Camera needs a secure HTTPS connection. Open this page with https://... and allow the browser certificate warning.';
+                console.warn('Camera requires a secure context');
+                return;
+            }
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = videoStream;
+                video.onloadedmetadata = () => {
+                    canvas.width  = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                };
+            } catch (e) {
+                console.error('Camera error:', e);
+                statusText.textContent = '⚠ Camera access denied or blocked. Please allow camera permission and try again.';
+            }
+        }
+
+        // ---- show / hide panels ----
+        function show(panel) {
+            [dashboard, trackerUI, summaryUI].forEach(p => p.classList.add('hidden'));
+            panel.classList.remove('hidden');
+        }
+
+        // ---- progress ring ----
+        function setRingProgress(ratio) {
+            const offset = CIRCUMFERENCE * (1 - Math.min(ratio, 1));
+            ringProg.style.strokeDashoffset = offset;
+        }
+
+        // ---- move to target ----
+        function moveToTarget(idx) {
+            if (idx >= targets.length) { finishSession(); return; }
+
+            currentTargetIdx = idx;
+            framesCapturedForTarget = 0;
+            setRingProgress(0);
+
+            const t = targets[idx];
+            targetCont.style.left = t.x + 'px';
+            targetCont.style.top  = t.y + 'px';
+
+            // Settle phase
+            isSettled = false;
+            targetDot.className = 'settling';
+            beep(500, 60);
+
+            targetCounterEl.textContent = `${idx + 1} / ${targets.length}`;
+            statusText.textContent = 'Settling…';
+
+            clearTimeout(settleTimeout);
+            settleTimeout = setTimeout(() => {
+                isSettled = true;
+                targetDot.className = 'capturing';
+                statusText.textContent = 'Capturing';
+                beep(800, 40);
+                captureAndSend();
+            }, SETTLE_MS);
+        }
+
+        // ---- capture loop (ack-driven flow control) ----
+        function captureAndSend() {
+            if (!isRecording || isPaused || !isSettled || waitingForAck) return;
+
+            if (framesCapturedForTarget >= framesPerTarget) {
+                moveToTarget(currentTargetIdx + 1);
+                return;
+            }
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            const t = targets[currentTargetIdx];
+
+            waitingForAck = true;
+            socket.emit('process_frame', {
+                image: imageData,
+                target_x: t.x,
+                target_y: t.y,
+                target_type: t.type || 'unknown',
+                screen_w: window.innerWidth,
+                screen_h: window.innerHeight,
+                cam_w: canvas.width,
+                cam_h: canvas.height,
+            });
+        }
+
+        socket.on('frame_result', data => {
+            waitingForAck = false;
+
+            if (!isRecording || isPaused) return;
+
+            if (data.success) {
+                framesCapturedForTarget++;
+                totalFramesCaptured++;
+                if (data.quality === 'good') goodFrames++; else poorFrames++;
+
+                trackDot.className = 'status-dot ok';
+                setRingProgress(framesCapturedForTarget / framesPerTarget);
+                frameCounterEl.textContent = totalFramesCaptured;
+
+                const totalQ = goodFrames + poorFrames;
+                qualityLabel.textContent = totalQ > 0 ? Math.round(goodFrames / totalQ * 100) + '%' : '—';
+            } else {
+                trackDot.className = 'status-dot bad';
+            }
+
+            // Next frame (via rAF to avoid blocking)
+            requestAnimationFrame(captureAndSend);
+        });
+
+        // ---- countdown ----
+        function runCountdown(cb) {
+            countdown.style.display = 'flex';
+            let n = 3;
+            countdown.textContent = n;
+            beep(440, 150);
+
+            const iv = setInterval(() => {
+                n--;
+                if (n > 0) {
+                    countdown.textContent = n;
+                    beep(440, 150);
+                } else if (n === 0) {
+                    countdown.textContent = 'GO';
+                    beep(880, 200, 0.08);
+                } else {
+                    clearInterval(iv);
+                    countdown.style.display = 'none';
+                    cb();
+                }
+            }, 850);
+        }
+
+        // ---- start session ----
+        btnStart.addEventListener('click', async () => {
+            show(trackerUI);
+            await startCamera();
+
+            try { await document.documentElement.requestFullscreen(); } catch (_) {}
+
+            runCountdown(() => {
+                const cfg = {
+                    user:             $('username').value || 'unknown',
+                    session_type:     $('session-type').value,
+                    session_name:     $('session-name').value || 'session',
+                    collection_mode:  $('collection-mode').value,
+                    target_count:     parseInt(targetCountSlider.value),
+                    frames_per_target:parseInt(fptSlider.value),
+                    screen_w:         window.innerWidth,
+                    screen_h:         window.innerHeight,
+                };
+                socket.emit('start_session', cfg);
+            });
+        });
+
+        socket.on('session_started', data => {
+            targets = data.targets;
+            framesPerTarget = data.frames_per_target;
+
+            currentTargetIdx = 0;
+            framesCapturedForTarget = 0;
+            totalFramesCaptured = 0;
+            goodFrames = 0;
+            poorFrames = 0;
+            sessionStartTime = Date.now();
+            isRecording = true;
+            isPaused = false;
+            waitingForAck = false;
+
+            btnPause.textContent = '⏸ Pause';
+
+            moveToTarget(0);
+        });
+
+        // ---- pause ----
+        btnPause.addEventListener('click', () => {
+            isPaused = !isPaused;
+            if (isPaused) {
+                btnPause.textContent = '▶ Resume';
+                targetDot.style.opacity = '0.3';
+                statusText.textContent = 'Paused';
+                trackDot.className = 'status-dot';
+            } else {
+                btnPause.textContent = '⏸ Pause';
+                targetDot.style.opacity = '1';
+                // Re-settle the current target
+                moveToTarget(currentTargetIdx);
+            }
+        });
+
+        // ---- finish ----
+        function finishSession() {
+            isRecording = false;
+            clearTimeout(settleTimeout);
+            beep(660, 200, 0.08);
+
+            const elapsed = Math.round((Date.now() - sessionStartTime) / 1000);
+            const totalQ = goodFrames + poorFrames;
+            const qPct = totalQ > 0 ? Math.round(goodFrames / totalQ * 100) : 0;
+
+            $('sum-frames').textContent   = totalFramesCaptured;
+            $('sum-duration').textContent = elapsed < 60 ? elapsed + 's' : Math.floor(elapsed/60) + 'm ' + (elapsed%60) + 's';
+            $('sum-quality').textContent  = qPct + '%';
+            $('sum-detail').textContent   = `${goodFrames} good · ${poorFrames} poor · ${totalFramesCaptured} saved`;
+
+            const chip = $('sum-quality-chip');
+            chip.className = 'summary-stat ' + (qPct >= 80 ? 'good' : 'warn');
+
+            try { if (document.fullscreenElement) document.exitFullscreen(); } catch (_) {}
+            show(summaryUI);
+        }
+
+        btnFinish.addEventListener('click', finishSession);
+
+        // ---- save / discard ----
+        btnSave.addEventListener('click', () => {
+            socket.emit('save_session');
+        });
+
+        socket.on('session_saved', data => {
+            if (data.status === 'success') {
+                alert('Saved ' + data.frames + ' frames to ' + data.file);
+            } else if (data.status === 'empty') {
+                alert('No data to save.');
+            }
+            show(dashboard);
+            fetchStats();
+        });
+
+        btnDiscard.addEventListener('click', () => {
+            if (confirm('Discard all captured data for this session?')) {
+                socket.emit('discard_session');
+                show(dashboard);
+            }
+        });
+
+        btnNew.addEventListener('click', () => {
+            socket.emit('discard_session');
+            show(dashboard);
+        });
+
+    })();
+    </script>
+</body>
+</html>
