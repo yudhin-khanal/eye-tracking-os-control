@@ -86,5 +86,5 @@ python src/gaze_mouse.py
 5. **Action** ➔ `pyautogui` moves your system cursor.
 
 <div align="center">
-  <i>Built with ❤️ by Aadarsh</i>
+  <i>Built with ❤️ by Yudhin & Aadarsh</i>
 </div>
